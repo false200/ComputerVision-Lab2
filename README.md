@@ -6,33 +6,19 @@
 
 ## Table of contents
 
-1. [One-minute elevator pitch](#1-one-minute-elevator-pitch)
-2. [What problem are we solving?](#2-what-problem-are-we-solving)
-3. [System architecture](#3-system-architecture)
-4. [Project file structure](#4-project-file-structure)
-5. [Step-by-step pipeline](#5-step-by-step-pipeline-explain-each-stage)
-6. [Mathematics](#6-mathematics-you-must-be-able-to-explain)
-7. [How to run the lab](#7-how-to-run-the-lab)
-8. [Outputs](#8-outputs-and-what-they-mean)
-9. [Results](#9-our-actual-results)
-10. [Calibration notes](#10-important-honesty-about-calibration)
+1. [What problem are we solving?](#1-what-problem-are-we-solving)
+2. [System architecture](#2-system-architecture)
+3. [Project file structure](#3-project-file-structure)
+4. [Step-by-step pipeline](#4-step-by-step-pipeline-explain-each-stage)
+5. [Mathematics](#5-mathematics-you-must-be-able-to-explain)
+6. [How to run the lab](#6-how-to-run-the-lab)
+7. [Outputs](#7-outputs-and-what-they-mean)
+8. [Results](#8-our-actual-results)
+9. [Calibration notes](#9-important-honesty-about-calibration)
 
 ---
 
-## 1. One-minute elevator pitch
-
-> Humans see depth because our two eyes look at the world from slightly different places. Close objects shift a lot between the two views; far objects barely shift.  
-> We copy that idea with two photos (`left.jpg`, `right.jpg`), measure that shift (**disparity**), and convert it to distance with:
-
-```text
-Z = (f × B) / d
-```
-
-> Then we detect the blue bottle with colour segmentation and report its depth.
-
----
-
-## 2. What problem are we solving?
+## 1. What problem are we solving?
 
 | Item | Details |
 |------|---------|
@@ -46,9 +32,9 @@ Z = (f × B) / d
 
 ---
 
-## 3. System architecture
+## 2. System architecture
 
-### 3.1 High-level pipeline
+### 2.1 High-level pipeline
 
 ```mermaid
 flowchart LR
@@ -67,7 +53,7 @@ flowchart LR
     J --> K[Visualisations + results.txt]
 ```
 
-### 3.2 Software architecture (modules)
+### 2.2 Software architecture (modules)
 
 ```mermaid
 flowchart TB
@@ -100,7 +86,7 @@ flowchart TB
 | `visualization.py` | Saves all figures and `results.txt` |
 | `config.py` | Paths and tuned parameters in one place |
 
-### 3.3 Data-flow architecture
+### 2.3 Data-flow architecture
 
 ```mermaid
 flowchart TD
@@ -149,7 +135,7 @@ flowchart TD
     BS --> TXT
 ```
 
-### 3.4 Decision tree inside the code
+### 2.4 Decision tree inside the code
 
 ```mermaid
 flowchart TD
@@ -179,8 +165,7 @@ For **our** photos, aggressive warps were rejected, so the pipeline used **verti
 
 ---
 
-## 4. Project file structure
-
+## 3. Project file structure
 ```text
 CV Lab 2/
 ├── left.jpg                 # Left camera view
@@ -207,8 +192,7 @@ CV Lab 2/
 
 ---
 
-## 5. Step-by-step pipeline (explain each stage)
-
+## 4. Step-by-step pipeline (explain each stage)
 ### Step 1 — Stereo image loading (`image_io.py`)
 
 **What we do**
@@ -328,9 +312,8 @@ Every stage is saved under `outputs/`. Numerical summary goes to `results.txt`.
 
 ---
 
-## 6. Mathematics you must be able to explain
-
-### 6.1 Similar triangles (intuition)
+## 5. Mathematics you must be able to explain
+### 5.1 Similar triangles (intuition)
 
 ```text
         Left cam                         Right cam
@@ -352,20 +335,19 @@ d = (f × B) / Z
 Z = (f × B) / d
 ```
 
-### 6.2 Epipolar geometry (short version)
+### 5.2 Epipolar geometry (short version)
 
 - A point in the left image must lie on a corresponding **epipolar line** in the right image.
 - Rectification makes those lines **horizontal and aligned by row**.
 - That is why green guide lines are drawn across both rectified images.
 
-### 6.3 Why median instead of mean?
+### 5.3 Why median instead of mean?
 
 Stereo matching produces outliers (wrong matches). The **median** ignores extreme bad pixels better than the mean — important on a smooth bottle with many invalid centre pixels.
 
 ---
 
-## 7. How to run the lab
-
+## 6. How to run the lab
 ### Install & run (Windows — recommended Python 3.11 on this PC)
 
 ```powershell
@@ -393,8 +375,7 @@ matplotlib
 
 ---
 
-## 8. Outputs and what they mean
-
+## 7. Outputs and what they mean
 | File | What it shows |
 |------|---------------|
 | `01_original_stereo.png` | Raw left/right |
@@ -408,8 +389,7 @@ matplotlib
 
 ---
 
-## 9. Our actual results
-
+## 8. Our actual results
 From the last successful run (`outputs/results.txt`):
 
 | Quantity | Value |
@@ -429,8 +409,7 @@ These metre values use assumed `f` and `B`; they are not ground-truth distances.
 
 ---
 
-## 10. Important honesty about calibration
-
+## 9. Important honesty about calibration
 We **do not invent “accurate” camera parameters**.
 
 Without chessboard calibration + a measured baseline, metric depth is only as good as the placeholders in `config.py`:
