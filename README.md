@@ -2,8 +2,6 @@
 
 **Goal:** Estimate how far a blue water bottle is from the camera using two photos taken from slightly different positions — using only traditional computer vision (OpenCV, NumPy, Matplotlib). **No deep learning.**
 
-This README is written so you can **understand the full project** and **explain it clearly in front of the class**.
-
 ---
 
 ## Table of contents
@@ -12,15 +10,12 @@ This README is written so you can **understand the full project** and **explain 
 2. [What problem are we solving?](#2-what-problem-are-we-solving)
 3. [System architecture](#3-system-architecture)
 4. [Project file structure](#4-project-file-structure)
-5. [Step-by-step pipeline (explain each stage)](#5-step-by-step-pipeline-explain-each-stage)
-6. [Mathematics you must be able to explain](#6-mathematics-you-must-be-able-to-explain)
+5. [Step-by-step pipeline](#5-step-by-step-pipeline-explain-each-stage)
+6. [Mathematics](#6-mathematics-you-must-be-able-to-explain)
 7. [How to run the lab](#7-how-to-run-the-lab)
-8. [Outputs and what they mean](#8-outputs-and-what-they-mean)
-9. [Our actual results](#9-our-actual-results)
-10. [Important honesty about calibration](#10-important-honesty-about-calibration)
-11. [Class presentation script](#11-class-presentation-script)
-12. [Likely viva / Q&A answers](#12-likely-viva--qa-answers)
-13. [How to improve accuracy later](#13-how-to-improve-accuracy-later)
+8. [Outputs](#8-outputs-and-what-they-mean)
+9. [Results](#9-our-actual-results)
+10. [Calibration notes](#10-important-honesty-about-calibration)
 
 ---
 
@@ -92,7 +87,7 @@ flowchart TB
 
 **Who does what?**
 
-| Module | Responsibility (say this in class) |
+| Module | Responsibility |
 |--------|-------------------------------------|
 | `run_lab.py` | Command-line entry point |
 | `pipeline.py` | Calls every stage in order |
@@ -222,9 +217,6 @@ CV Lab 2/
 - Fail if sizes differ
 - Optionally resize (long edge ≤ 800) so the lab runs quickly
 
-**What to say**
-> “Stereo algorithms assume both images describe the same scene at the same resolution. We verify that before any geometry.”
-
 ---
 
 ### Step 2 — Camera calibration (`calibration.py`)
@@ -253,9 +245,6 @@ K = [[fx,  0, cx],
 | Chessboard | Enough board images in `calibration_images/` | Can be metric if extrinsics are correct |
 | **Experimental** | No board images (**our case**) | Demonstrates the formula; **not ground truth** |
 
-**What to say**
-> “Without calibration we still run the full pipeline, but we clearly label depths as experimental. We never pretend placeholder `f` and `B` are accurate.”
-
 ---
 
 ### Step 3 — Stereo rectification (`rectification.py`)
@@ -268,9 +257,6 @@ K = [[fx,  0, cx],
 3. **Fallback used here:** shift the right image vertically by the median feature offset (~29 px)
 
 We draw **green horizontal guide lines** on the rectified pair so you can visually check alignment.
-
-**What to say**
-> “Rectification is the cleanup step that makes disparity search reliable.”
 
 ---
 
@@ -290,9 +276,6 @@ d = x_left − x_right
 We use **SGBM** for the final depth. OpenCV returns fixed-point values (`/ 16`). Invalid or `≤ 0` disparities become `NaN`.
 
 For these images, feature matching showed only ~9–16 px of horizontal shift, so `numDisparities` was auto-tuned to **32** (must be a multiple of 16).
-
-**What to say**
-> “Closer objects have larger disparity. The bottle’s smooth blue surface is hard to match in the centre, so we rely on valid edge pixels and medians.”
 
 ---
 
@@ -412,16 +395,16 @@ matplotlib
 
 ## 8. Outputs and what they mean
 
-| File | What it shows | Use it to explain… |
-|------|---------------|--------------------|
-| `01_original_stereo.png` | Raw left/right | Input pair |
-| `02_rectified_stereo.png` | Aligned pair + green lines | Rectification / epipolar geometry |
-| `03_disparity_comparison.png` | BM vs SGBM | Matching algorithms |
-| `04_colour_mapped_disparity.png` | Colour SGBM map | Disparity as a heat map |
-| `05_bottle_detection.png` | BBox + mask | HSV segmentation |
-| `06_depth_map.png` | Full depth visualisation | `Z = fB/d` |
-| `07_bottle_depth.png` | Bottle overlay + depth text | Final answer for the bottle |
-| `results.txt` | Numbers | Lab report / viva numbers |
+| File | What it shows |
+|------|---------------|
+| `01_original_stereo.png` | Raw left/right |
+| `02_rectified_stereo.png` | Aligned pair + green lines |
+| `03_disparity_comparison.png` | BM vs SGBM |
+| `04_colour_mapped_disparity.png` | Colour SGBM map |
+| `05_bottle_detection.png` | BBox + mask |
+| `06_depth_map.png` | Full depth visualisation |
+| `07_bottle_depth.png` | Bottle overlay + depth text |
+| `results.txt` | Numerical summary |
 
 ---
 
@@ -442,8 +425,7 @@ From the last successful run (`outputs/results.txt`):
 | Median depth | **~4.29 m (428.7 cm)** — illustrative |
 | Centre depth | **~4.53 m (452.5 cm)** — illustrative |
 
-**Say this clearly in class:**  
-> “These metre values demonstrate the stereo equation with assumed `f` and `B`. They are not surveyed ground-truth distances.”
+These metre values use assumed `f` and `B`; they are not ground-truth distances.
 
 ---
 
@@ -465,93 +447,3 @@ EXPERIMENTAL_BASELINE_M = 0.08
 4. Then true metric `Z = fB/d`
 
 Put board photos in `calibration_images/` to enable the chessboard path.
-
----
-
-## 11. Class presentation script
-
-Use this as a speaking outline (~5–8 minutes).
-
-### Opening (30 sec)
-> “Lab 2 is stereo vision. Like two eyes, two cameras give parallax. We convert that parallax into depth for a blue bottle using classical OpenCV — no neural networks.”
-
-### Architecture (1 min)
-> Show the pipeline diagram: load → calibrate → rectify → disparity → depth → detect bottle → report depth.  
-> “The code is modular so each concept maps to one file.”
-
-### Live or saved outputs (3 min)
-1. Original pair — same scene, small viewpoint change  
-2. Rectified pair — green lines prove row alignment  
-3. BM vs SGBM — SGBM denser / cleaner  
-4. Bottle mask — HSV colour segmentation  
-5. Final depth overlay — formula applied inside the mask  
-
-### Math slide (1 min)
-> Write `Z = fB/d` on the board. Explain each symbol. Mention similar triangles.
-
-### Closing (30 sec)
-> “Pipeline works end-to-end. Because we lack chessboard calibration, depths are experimental. With real calibration, the same code gives metric depth.”
-
----
-
-## 12. Likely viva / Q&A answers
-
-**Q: Why rectify?**  
-A: So correspondence search is horizontal only; epipolar lines become scanlines.
-
-**Q: BM vs SGBM?**  
-A: BM compares local blocks. SGBM aggregates matching costs along many paths → smoother, more accurate maps. We use SGBM for final depth.
-
-**Q: Why is the bottle centre often black in disparity?**  
-A: The surface is smooth / low texture, so block matching finds weak matches. We use median over valid mask pixels and an expanding centre window.
-
-**Q: Why HSV not RGB?**  
-A: Hue separates colour from brightness; lighting changes hurt RGB thresholds more.
-
-**Q: What if left/right were swapped?**  
-A: Disparity would go negative / invalid for front objects. We verified `x_left − x_right > 0`.
-
-**Q: Are your depths correct in metres?**  
-A: They follow the formula with experimental `f` and `B`. They are illustrative until real calibration and measured baseline are provided.
-
-**Q: Why median disparity?**  
-A: Robust to outlier matches.
-
-**Q: What is baseline?**  
-A: Distance between the two camera centres. Larger baseline → larger disparity for the same depth → better depth resolution, but harder matching if too large.
-
----
-
-## 13. How to improve accuracy later
-
-1. Capture 15–20 chessboard poses → real `K`, `D`  
-2. Capture stereo chessboard pairs → real `R`, `T`, `B`  
-3. Measure baseline with a ruler  
-4. Use `--full-res` after calibration  
-5. Optionally add a known-size object to cross-check `Z`  
-6. Tune HSV if lighting changes  
-
----
-
-## Quick formula card (print this)
-
-```text
-Disparity:   d = x_left - x_right          (pixels)
-Depth:       Z = (f * B) / d               (metres)
-Baseline:    B = ||T||                     (metres)
-Focal:       f ≈ fx from camera matrix K   (pixels)
-
-Closer object  →  larger d  →  smaller Z
-Farther object →  smaller d →  larger Z
-```
-
----
-
-## Credits / stack
-
-- **Language:** Python 3  
-- **Libraries:** OpenCV, NumPy, Matplotlib  
-- **Topic:** Stereo Vision & Depth Estimation  
-- **Approach:** Traditional multi-view geometry only  
-
-Good luck with your class explanation — walk the diagrams top-to-bottom, then show the `outputs/` images in order `01` → `07`.
