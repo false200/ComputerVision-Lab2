@@ -1,59 +1,131 @@
-# Computer Vision Lab 2 — Stereo Vision and Depth Estimation
+# Computer Vision Lab 2 — Stereo Vision, Disparity, and Depth
 
 Estimate depth from a left/right image pair using classical stereo vision only (**OpenCV**, **NumPy**, **Matplotlib**). No deep learning.
 
-All code is in one short file: **`run_lab.py`**.
-
-Core pipeline:
+All code is in **`run_lab.py`**.
 
 ```text
-load → rectify → disparity (StereoBM + StereoSGBM) → depth Z = (f × B) / d
+load → rectify → correspondence / disparity (StereoBM + StereoSGBM) → depth
 ```
-
-Kept explicitly: **stereo pair**, **disparity maps**, and **depth**.
 
 ---
 
-## Why this works
+## 1. Pipeline overview
 
-Two photos of the same scene from slightly different positions create **parallax**. Nearby objects shift more than far ones. That horizontal shift after alignment is **disparity** `d`.
+| Step | What happens | Formula / idea |
+|------|----------------|----------------|
+| Load | Read `left.jpg`, `right.jpg` | Same resolution required |
+| Rectify | Align rows (epipolar lines horizontal) | Correspondence becomes 1-D |
+| Disparity | Solve the **correspondence problem** | `d = u_l − u_r` |
+| Depth | Perspective stereo equation | `Z = (f × B) / d` |
+
+---
+
+## 2. Formulas (full set used in this lab)
+
+### 2.1 Perspective projection (pinhole camera)
+
+A 3-D point `(x, y, z)` projects to the image as:
 
 ```text
-d = x_left − x_right
-Z = (f × B) / d
+u = fx * (x / z) + ox
+v = fy * (y / z) + oy
 ```
 
-| Symbol | Meaning |
-|--------|---------|
-| `d` | Disparity in pixels |
-| `f` | Focal length in pixels |
-| `B` | Baseline (metres) between camera centres |
-| `Z` | Depth in metres |
+For a **stereo** pair with baseline `b` along x (right camera shifted by `b`):
 
-Larger `d` → closer object. Smaller `d` → farther object.
+```text
+Left:   (u_l, v_l) = ( fx * (x / z)       + ox ,  fy * (y / z) + oy )
+Right:  (u_r, v_r) = ( fx * ((x - b) / z) + ox ,  fy * (y / z) + oy )
+```
+
+After rectification, `v_l = v_r` (same row). Only the horizontal coordinate differs.
+
+### 2.2 Disparity from perspective projection
+
+```text
+d = u_l - u_r
+  = fx*(x/z) - fx*((x - b)/z)
+  = fx * (b / z)
+```
+
+So:
+
+```text
+d = (fx * b) / z
+z = (fx * b) / d
+```
+
+In code we write this as:
+
+```text
+Z = (f * B) / d
+```
+
+with `f ≈ fx` (pixels) and `B = b` (metres).
+
+### 2.3 Correspondence problem
+
+**Problem:** given a pixel in the left image, find the matching pixel in the right image (same 3-D world point).
+
+**In this lab:** StereoBM and StereoSGBM solve correspondence densely along each row after rectification. The match shift is disparity `d`.
+
+ORB matching in `rectify()` also solves correspondence sparsely, only to estimate the vertical offset.
+
+### 2.4 Symbol table
+
+| Symbol | Meaning | In `run_lab.py` |
+|--------|---------|-----------------|
+| `(x,y,z)` | 3-D point in camera frame | recovered depth is `z` / `Z` |
+| `(u_l, v_l)` | left image pixel | left rectified image |
+| `(u_r, v_r)` | right image pixel | right rectified image |
+| `fx`, `fy` | focal length (pixels) | `FOCAL_PX` (as `f`) |
+| `ox`, `oy` | principal point | assumed near image centre |
+| `b` / `B` | baseline (metres) | `BASELINE_M` |
+| `d` | disparity (pixels) | StereoBM / StereoSGBM output |
+| `Z` | depth (metres) | `disparity_to_depth()` |
+
+### 2.5 Intuition
+
+```text
+Closer object  →  larger d  →  smaller Z
+Farther object →  smaller d →  larger Z
+```
 
 ---
 
-## What the code does
+## 3. Where each formula appears in code
 
-### 1. Load
-Reads `left.jpg` and `right.jpg`, checks matching sizes, optionally resizes for speed.
-
-### 2. Rectify
-Uses ORB feature matches to estimate the vertical offset between views, then shifts the right image so corresponding points share the same row. If the disparity trend is negative, left/right are swapped so OpenCV gets positive disparities. Green guide lines are drawn for visual checks.
-
-### 3. Disparity
-- **StereoBM** — local block matching (fast, noisier)
-- **StereoSGBM** — semi-global matching (cleaner; used for depth)
-
-### 4. Depth
-Applies `Z = (f * B) / d` on the SGBM map. Invalid / zero disparities are skipped (no divide-by-zero).
-
-`f` and `B` in this lab are **experimental placeholders** (`700` px and `0.08` m). Depths demonstrate the formula; they are not ground-truth metres without real camera calibration.
+| Concept | Location in `run_lab.py` |
+|---------|---------------------------|
+| `f`, `B` | `FOCAL_PX`, `BASELINE_M` at top |
+| Correspondence / disparity | `compute_bm()`, `compute_sgbm()` |
+| `d = u_l - u_r` | OpenCV stereo matchers (internally) |
+| `Z = (f * B) / d` | `disparity_to_depth()` → `depth[valid] = (f * B) / disp[valid]` |
+| Sparse correspondence | `match_offsets()` / ORB inside `rectify()` |
 
 ---
 
-## Run
+## 4. What the code does (steps)
+
+### Load
+Reads left/right, checks shapes match, optional resize for speed.
+
+### Rectify
+Estimates median vertical offset from ORB matches, shifts the right image so matches share a row. Swaps left/right if disparity would be negative. Draws green horizontal guides.
+
+### Disparity (correspondence)
+- **StereoBM** — block matching  
+- **StereoSGBM** — semi-global matching (used for final depth)
+
+### Depth
+Applies perspective stereo formula `Z = (f * B) / d` on the SGBM disparity map. Skips invalid / zero `d`.
+
+`f` and `B` are **experimental placeholders** (`700` px, `0.08` m). Depths illustrate the equation; they are not ground-truth metres without real calibration.
+
+---
+
+## 5. Run
 
 ```powershell
 & "$env:LocalAppData\Programs\Python\Python311\python.exe" -m pip install -r requirements.txt
@@ -67,7 +139,7 @@ python run_lab.py --full-res
 
 ---
 
-## Outputs (`outputs/`)
+## 6. Outputs (`outputs/`)
 
 | File | Content |
 |------|---------|
@@ -77,13 +149,13 @@ python run_lab.py --full-res
 | `03_disparity_bm_gray.png` | StereoBM disparity (grey) |
 | `04_disparity_sgbm.png` | StereoSGBM disparity (colour) |
 | `04_disparity_sgbm_gray.png` | StereoSGBM disparity (grey) |
-| `05_disparity_comparison.png` | BM vs SGBM side by side |
-| `06_depth.png` | Depth map from SGBM |
-| `results.txt` | `f`, `B`, both median disparities, median depth |
+| `05_disparity_comparison.png` | BM vs SGBM |
+| `06_depth.png` | Depth from SGBM via `Z=(f*B)/d` |
+| `results.txt` | `f`, `B`, disparities, depth |
 
 ---
 
-## Project layout
+## 7. Project layout
 
 ```text
 left.jpg / right.jpg
@@ -95,11 +167,17 @@ outputs/          # created on run (gitignored)
 
 ---
 
-## Formula reminder
+## 8. Quick formula card
 
 ```text
-Z = (f * B) / d
-```
+Perspective (stereo):
+  u_l = fx * (x / z) + ox
+  u_r = fx * ((x - b) / z) + ox
 
-Closer → larger `d` → smaller `Z`.  
-Farther → smaller `d` → larger `Z`.
+Disparity:
+  d = u_l - u_r = (fx * b) / z
+
+Depth:
+  z = (fx * b) / d
+  Z = (f * B) / d          ← used in code
+```

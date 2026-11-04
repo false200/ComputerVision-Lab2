@@ -2,14 +2,38 @@
 """
 CV Lab 2 - Stereo Vision, Disparity, and Depth
 ==============================================
-load -> rectify -> disparity (StereoBM + StereoSGBM) -> depth
+load -> rectify -> correspondence/disparity (BM + SGBM) -> depth
 
     python run_lab.py
     python run_lab.py --show
     python run_lab.py --full-res
 
-Disparity: d = x_left - x_right
-Depth:     Z = (f * B) / d
+---------------------------------------------------------------------------
+FORMULAS (perspective projection -> disparity -> depth)
+---------------------------------------------------------------------------
+
+Perspective projection of 3-D point (x, y, z) onto stereo cameras
+with focal lengths (fx, fy), principal point (ox, oy), baseline b:
+
+  Left:   u_l = fx * (x / z)       + ox
+          v_l = fy * (y / z)       + oy
+
+  Right:  u_r = fx * ((x - b) / z) + ox
+          v_r = fy * (y / z)       + oy
+
+After rectification, v_l = v_r (same row). Disparity is:
+
+  d = u_l - u_r = (fx * b) / z
+
+Solve for depth:
+
+  z = (fx * b) / d
+  Z = (f * B) / d          # used in disparity_to_depth()
+
+Correspondence problem:
+  Find matching pixels between left and right (same world point).
+  StereoBM / StereoSGBM solve this densely -> disparity map d.
+---------------------------------------------------------------------------
 """
 
 from __future__ import annotations
@@ -22,7 +46,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # -----------------------------------------------------------------------------
-# Config
+# Config  (f ~ fx, B ~ b  in the formulas above)
 # -----------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent
 LEFT_IMAGE = ROOT / "left.jpg"
@@ -31,7 +55,9 @@ OUTPUT_DIR = ROOT / "outputs"
 
 MAX_LONG_EDGE = 800
 
-# Experimental placeholders (not ground-truth calibration)
+# Experimental placeholders (NOT ground-truth calibration)
+# f  <->  fx   (pixels)
+# B  <->  b    (metres)
 FOCAL_PX = 700.0
 BASELINE_M = 0.08
 
@@ -122,6 +148,10 @@ def fixed_to_float(disp_fixed):
 
 
 def compute_bm(left_g, right_g, num_disp):
+    """
+    StereoBM: solve correspondence with local block matching.
+    Output disparity d ≈ u_l - u_r (pixels).
+    """
     block = BM_BLOCK if BM_BLOCK % 2 == 1 else BM_BLOCK + 1
     stereo = cv2.StereoBM_create(numDisparities=num_disp, blockSize=block)
     stereo.setUniquenessRatio(15)
@@ -131,6 +161,10 @@ def compute_bm(left_g, right_g, num_disp):
 
 
 def compute_sgbm(left_g, right_g, num_disp):
+    """
+    StereoSGBM: solve correspondence with semi-global matching.
+    Output disparity d ≈ u_l - u_r (pixels). Used for final depth.
+    """
     block = SGBM_BLOCK if SGBM_BLOCK % 2 == 1 else SGBM_BLOCK + 1
     mode = getattr(cv2, "STEREO_SGBM_MODE_HH", 0)
     stereo = cv2.StereoSGBM_create(
@@ -150,9 +184,19 @@ def compute_sgbm(left_g, right_g, num_disp):
 
 
 def disparity_to_depth(disp, f=FOCAL_PX, B=BASELINE_M):
-    """Z = (f * B) / d  — invalid d -> NaN."""
+    """
+    Perspective stereo depth from disparity.
+
+    From projection:
+        d = u_l - u_r = (fx * b) / z
+    Therefore:
+        Z = (f * B) / d
+
+    Invalid / non-positive d -> NaN (no division by zero).
+    """
     depth = np.full(disp.shape, np.nan, dtype=np.float32)
     valid = np.isfinite(disp) & (disp > 0)
+    # Z = (f * B) / d   ← main perspective-projection stereo formula
     depth[valid] = (f * B) / disp[valid]
     depth[(depth < 0.05) | (depth > 50.0)] = np.nan
     return depth
@@ -307,6 +351,13 @@ def run(left_path, right_path, output_dir, max_long_edge, show):
     summary = output_dir / "results.txt"
     lines = [
         "CV Lab 2 - Stereo Vision, Disparity & Depth",
+        "",
+        "Perspective projection (stereo):",
+        "  u_l = fx * (x / z) + ox",
+        "  u_r = fx * ((x - b) / z) + ox",
+        "  d   = u_l - u_r = (fx * b) / z",
+        "  Z   = (f * B) / d",
+        "",
         f"f (px)                 : {FOCAL_PX}",
         f"B (m)                  : {BASELINE_M}",
         f"numDisparities         : {num_disp}",
@@ -314,9 +365,9 @@ def run(left_path, right_path, output_dir, max_long_edge, show):
         f"StereoSGBM median d(px): {med_sgbm}",
         f"Median depth (m)       : {med_z}",
         f"Median depth (cm)      : {None if med_z is None else med_z * 100}",
-        "Disparity               : d = x_left - x_right",
-        "Depth equation          : Z = (f * B) / d",
-        "NOTE: experimental f,B — depths are illustrative only.",
+        "",
+        "Correspondence: StereoBM / StereoSGBM match left-right pixels -> d",
+        "NOTE: experimental f,B - depths are illustrative only.",
     ]
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"   saved {summary.name}")
