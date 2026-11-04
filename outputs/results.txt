@@ -1,0 +1,35 @@
+Computer Vision Lab 2 - Stereo Vision & Depth Estimation
+================================================================
+Left image          : left.jpg
+Right image         : right.jpg
+Working resolution  : 600 x 800 (scale=0.5000)
+
+Calibration
+----------------------------------------------------------------
+Mode                : experimental
+Focal length f (px) : 700.0000
+Baseline B (m)      : 0.080000
+Metric depths?      : False
+NOTE: EXPERIMENTAL MODE - no chessboard calibration data was found.
+NOTE: Using placeholder focal length f ~ 700.0 px and baseline B ~ 0.080 m.
+NOTE: Depth values computed from Z = (f * B) / d are ILLUSTRATIVE ONLY and must NOT be treated as accurate metric measurements.
+NOTE: For accurate depth you need: (1) intrinsic calibration of each camera (chessboard), (2) stereo extrinsics (R, T) from stereoCalibrate, and (3) a measured baseline in metres.
+
+Bottle detection
+----------------------------------------------------------------
+Detected            : True
+Bounding box (x,y,w,h): (224, 164, 103, 367)
+Centroid (x, y)       : (280, 350)
+Contour area (px)     : 30273
+
+Bottle depth
+----------------------------------------------------------------
+Disparity source      : StereoSGBM
+Valid bottle pixels   : 3486
+Median disparity (px) : 13.0
+Centre disparity (px) : 12.375
+Median depth           : 4.2871 m (428.71 cm)
+Centre depth           : 4.5253 m (452.53 cm)
+
+Equation used:  Z = (f * B) / d
+WARNING: Experimental calibration - do NOT treat these depths as ground-truth metric measurements.
