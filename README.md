@@ -10,29 +10,6 @@ load → rectify (scan lines) → window matching (SAD/SSD/NCC) → disparity �
 
 ---
 
-## Lecture checklist (what we implemented)
-
-| Lecture topic | Done? | Where in this project |
-|---------------|-------|------------------------|
-| Stereo cameras + baseline `b` | Yes | `BASELINE_B`, rectified left/right |
-| Perspective projection `(u_l,v_l)`, `(u_r,v_r)` | Yes | Header formulas + README §2 |
-| `fx, fy, b, ox, oy` known | Yes | `FX`, `FY`, `BASELINE_B`, image centre |
-| Disparity `d = u_l − u_r` | Yes | StereoBM / SGBM / scan-line matcher |
-| Depth `z = (b · fx) / d` | Yes | `disparity_to_xyz()` |
-| Also solve `x`, `y` | Yes | Same function (lecture formulas) |
-| Correspondence / find disparities | Yes | Window matching along scan line |
-| Template `T` + search scan line `L` | Yes | `match_along_scanline`, demo figure |
-| SAD (minimise) | Yes | `sad()` + StereoBM (dense SAD) |
-| SSD (minimise) | Yes | `ssd()` on template demo |
-| NCC (maximise) | Yes | `ncc()` on template demo |
-| Small window (noisy) | Yes | `WINDOW_SMALL = 5` |
-| Large window (~30 px, smoother) | Yes | `WINDOW_LARGE = 31` |
-| Adaptive windows | Yes | `adaptive_window_disparity()` |
-| Disparity map closer=brighter | Yes | `disparity_gray_map()` |
-| Depth map from `z` | Yes | `06_depth.png` |
-
----
-
 ## 1. Perspective projection (slide)
 
 Left camera at origin, right camera at `(b, 0, 0)`:
