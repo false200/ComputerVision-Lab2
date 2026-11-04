@@ -7,8 +7,10 @@ All code is in one short file: **`run_lab.py`**.
 Core pipeline:
 
 ```text
-load stereo pair → rectify → disparity (StereoBM + StereoSGBM) → depth Z = (f × B) / d
+load → rectify → disparity (StereoBM + StereoSGBM) → depth Z = (f × B) / d
 ```
+
+Kept explicitly: **stereo pair**, **disparity maps**, and **depth**.
 
 ---
 
@@ -71,10 +73,13 @@ python run_lab.py --full-res
 |------|---------|
 | `01_stereo_pair.png` | Original left/right |
 | `02_rectified.png` | Rectified pair + guides |
-| `03_disparity_bm.png` | StereoBM disparity |
-| `04_disparity_sgbm.png` | StereoSGBM disparity |
-| `05_depth.png` | Depth map from SGBM |
-| `results.txt` | `f`, `B`, median disparity, median depth |
+| `03_disparity_bm.png` | StereoBM disparity (colour) |
+| `03_disparity_bm_gray.png` | StereoBM disparity (grey) |
+| `04_disparity_sgbm.png` | StereoSGBM disparity (colour) |
+| `04_disparity_sgbm_gray.png` | StereoSGBM disparity (grey) |
+| `05_disparity_comparison.png` | BM vs SGBM side by side |
+| `06_depth.png` | Depth map from SGBM |
+| `results.txt` | `f`, `B`, both median disparities, median depth |
 
 ---
 

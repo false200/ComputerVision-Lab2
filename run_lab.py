@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-CV Lab 2 - Stereo Vision and Depth Estimation
-=============================================
-Core only: load stereo pair -> rectify -> disparity (BM + SGBM) -> depth.
+CV Lab 2 - Stereo Vision, Disparity, and Depth
+==============================================
+load -> rectify -> disparity (StereoBM + StereoSGBM) -> depth
 
     python run_lab.py
     python run_lab.py --show
     python run_lab.py --full-res
 
-Equation:  Z = (f * B) / d
+Disparity: d = x_left - x_right
+Depth:     Z = (f * B) / d
 """
 
 from __future__ import annotations
@@ -203,18 +204,18 @@ def run(left_path, right_path, output_dir, max_long_edge, show):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("\n=== Stereo Vision + Depth ===\n")
+    print("\n=== Stereo Vision + Disparity + Depth ===\n")
     left, right, _ = load_pair(Path(left_path), Path(right_path), max_long_edge)
     left_r, right_r, dx_med = rectify(left, right)
 
     left_g, right_g = to_gray(left_r), to_gray(right_r)
     num_disp = max(16, int(np.ceil((abs(dx_med) + 16) / 16.0) * 16))
     num_disp = min(num_disp, 64)
-    # fallback if estimate is tiny
     if num_disp < NUM_DISPARITIES:
         num_disp = NUM_DISPARITIES
 
-    print("3. DISPARITY")
+    # --- Disparity maps (kept explicitly: BM + SGBM) ---
+    print("3. DISPARITY  d = x_left - x_right")
     print(f"   numDisparities={num_disp}")
     disp_bm = compute_bm(left_g, right_g, num_disp)
     disp_sgbm = compute_sgbm(left_g, right_g, num_disp)
@@ -223,79 +224,98 @@ def run(left_path, right_path, output_dir, max_long_edge, show):
         v = d[np.isfinite(d)]
         if v.size == 0:
             print(f"   {name}: no valid pixels")
-            return
+            return None
+        med = float(np.median(v))
         print(
             f"   {name}: valid={v.size}/{d.size} "
-            f"median={np.median(v):.2f}px  "
+            f"median d={med:.2f}px  "
             f"range=[{v.min():.2f}, {v.max():.2f}]"
         )
+        return med
 
-    stats("StereoBM", disp_bm)
-    stats("StereoSGBM", disp_sgbm)
+    med_bm = stats("StereoBM", disp_bm)
+    med_sgbm = stats("StereoSGBM", disp_sgbm)
 
+    # --- Depth from SGBM disparity ---
     print("4. DEPTH  Z = (f * B) / d")
     print(f"   f={FOCAL_PX:.1f}px  B={BASELINE_M:.3f}m  (experimental)")
     depth = disparity_to_depth(disp_sgbm)
     dv = depth[np.isfinite(depth)]
-    if dv.size:
+    med_z = float(np.median(dv)) if dv.size else None
+    if med_z is not None:
         print(
             f"   valid depth pixels={dv.size}  "
-            f"median Z={np.median(dv):.3f}m ({np.median(dv)*100:.1f}cm)"
+            f"median Z={med_z:.3f}m ({med_z * 100:.1f}cm)"
         )
         print("   NOTE: depths are illustrative without real calibration.")
     else:
         print("   no valid depth pixels")
 
     print("5. SAVE")
-    # original
     save_fig(
         output_dir / "01_stereo_pair.png",
         np.hstack([left, right]),
         "Original stereo pair",
         show,
     )
-    # rectified + guides
     save_fig(
         output_dir / "02_rectified.png",
         draw_guides(left_r, right_r),
         "Rectified pair (horizontal guides)",
         show,
     )
-    # disparity
-    save_fig(
-        output_dir / "03_disparity_bm.png",
-        colourise(disp_bm),
-        "StereoBM disparity",
-        show,
-    )
-    save_fig(
-        output_dir / "04_disparity_sgbm.png",
-        colourise(disp_sgbm),
-        "StereoSGBM disparity",
-        show,
-    )
-    # depth
-    save_fig(
-        output_dir / "05_depth.png",
-        colourise(depth),
-        "Depth map from SGBM  Z=(f*B)/d",
-        show,
-    )
-    cv2.imwrite(str(output_dir / "05_depth_raw.png"), colourise(depth))
 
-    # text summary
+    # Disparity outputs
+    bm_color = colourise(disp_bm)
+    sgbm_color = colourise(disp_sgbm)
+    save_fig(output_dir / "03_disparity_bm.png", bm_color, "StereoBM disparity", show)
+    save_fig(output_dir / "04_disparity_sgbm.png", sgbm_color, "StereoSGBM disparity", show)
+
+    # Side-by-side disparity comparison
+    compare = np.hstack([bm_color, sgbm_color])
+    save_fig(
+        output_dir / "05_disparity_comparison.png",
+        compare,
+        "Disparity comparison: StereoBM (left) vs StereoSGBM (right)",
+        show,
+    )
+
+    # Greyscale disparity (normalized) for reports
+    def to_gray_u8(d):
+        g = np.zeros(d.shape, dtype=np.uint8)
+        valid = np.isfinite(d)
+        if np.any(valid):
+            vals = d[valid]
+            lo, hi = np.percentile(vals, [2, 98])
+            scaled = np.clip((d - lo) / max(hi - lo, 1e-6), 0, 1)
+            g = (np.nan_to_num(scaled, nan=0.0) * 255).astype(np.uint8)
+        return g
+
+    cv2.imwrite(str(output_dir / "03_disparity_bm_gray.png"), to_gray_u8(disp_bm))
+    cv2.imwrite(str(output_dir / "04_disparity_sgbm_gray.png"), to_gray_u8(disp_sgbm))
+    print("   saved 03_disparity_bm_gray.png")
+    print("   saved 04_disparity_sgbm_gray.png")
+
+    # Depth from disparity
+    save_fig(
+        output_dir / "06_depth.png",
+        colourise(depth),
+        "Depth map from StereoSGBM disparity  Z=(f*B)/d",
+        show,
+    )
+
     summary = output_dir / "results.txt"
-    med_d = float(np.nanmedian(disp_sgbm)) if np.isfinite(disp_sgbm).any() else None
-    med_z = float(np.median(dv)) if dv.size else None
     lines = [
-        "CV Lab 2 - Stereo Vision & Depth",
-        f"f (px)              : {FOCAL_PX}",
-        f"B (m)               : {BASELINE_M}",
-        f"numDisparities      : {num_disp}",
-        f"SGBM median d (px)  : {med_d}",
-        f"Median depth (m)    : {med_z}",
-        f"Median depth (cm)   : {None if med_z is None else med_z * 100}",
-        "Equation             : Z = (f * B) / d",
+        "CV Lab 2 - Stereo Vision, Disparity & Depth",
+        f"f (px)                 : {FOCAL_PX}",
+        f"B (m)                  : {BASELINE_M}",
+        f"numDisparities         : {num_disp}",
+        f"StereoBM median d (px) : {med_bm}",
+        f"StereoSGBM median d(px): {med_sgbm}",
+        f"Median depth (m)       : {med_z}",
+        f"Median depth (cm)      : {None if med_z is None else med_z * 100}",
+        "Disparity               : d = x_left - x_right",
+        "Depth equation          : Z = (f * B) / d",
         "NOTE: experimental f,B — depths are illustrative only.",
     ]
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
