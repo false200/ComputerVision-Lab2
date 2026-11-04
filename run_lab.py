@@ -218,6 +218,28 @@ def colourise(values):
     return coloured
 
 
+def disparity_gray_map(disp: np.ndarray) -> np.ndarray:
+    """
+    Classic textbook disparity visualisation (like ground-truth demos):
+      closer  -> higher d -> brighter
+      farther -> lower  d -> darker
+      invalid -> black
+    Returns a 3-channel BGR image so save_fig can display it.
+    """
+    gray = np.zeros(disp.shape, dtype=np.uint8)
+    valid = np.isfinite(disp) & (disp > 0)
+    if np.any(valid):
+        vals = disp[valid]
+        lo, hi = np.percentile(vals, [2, 98])
+        if hi <= lo:
+            hi = lo + 1.0
+        # larger disparity => closer => brighter pixel
+        scaled = np.clip((disp - lo) / (hi - lo), 0, 1)
+        gray = (np.nan_to_num(scaled, nan=0.0) * 255).astype(np.uint8)
+        gray[~valid] = 0
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+
 def draw_guides(left_bgr, right_bgr, n=10):
     canvas = np.hstack([left_bgr, right_bgr]).copy()
     h = left_bgr.shape[0]
@@ -324,21 +346,33 @@ def run(left_path, right_path, output_dir, max_long_edge, show):
         show,
     )
 
-    # Greyscale disparity (normalized) for reports
-    def to_gray_u8(d):
-        g = np.zeros(d.shape, dtype=np.uint8)
-        valid = np.isfinite(d)
-        if np.any(valid):
-            vals = d[valid]
-            lo, hi = np.percentile(vals, [2, 98])
-            scaled = np.clip((d - lo) / max(hi - lo, 1e-6), 0, 1)
-            g = (np.nan_to_num(scaled, nan=0.0) * 255).astype(np.uint8)
-        return g
-
-    cv2.imwrite(str(output_dir / "03_disparity_bm_gray.png"), to_gray_u8(disp_bm))
-    cv2.imwrite(str(output_dir / "04_disparity_sgbm_gray.png"), to_gray_u8(disp_sgbm))
-    print("   saved 03_disparity_bm_gray.png")
-    print("   saved 04_disparity_sgbm_gray.png")
+    # Classic gray disparity maps: closer = brighter, farther = darker
+    bm_gray = disparity_gray_map(disp_bm)
+    sgbm_gray = disparity_gray_map(disp_sgbm)
+    save_fig(
+        output_dir / "03_disparity_bm_gray.png",
+        bm_gray,
+        "StereoBM disparity map (closer=brighter, farther=darker)",
+        show,
+    )
+    save_fig(
+        output_dir / "04_disparity_sgbm_gray.png",
+        sgbm_gray,
+        "StereoSGBM disparity map (closer=brighter, farther=darker)",
+        show,
+    )
+    save_fig(
+        output_dir / "05b_disparity_gray_comparison.png",
+        np.hstack([bm_gray, sgbm_gray]),
+        "Gray disparity: BM | SGBM  (bright=close, dark=far)",
+        show,
+    )
+    # Also write raw single-channel PNGs
+    cv2.imwrite(
+        str(output_dir / "04_disparity_sgbm_gray_raw.png"),
+        cv2.cvtColor(sgbm_gray, cv2.COLOR_BGR2GRAY),
+    )
+    print("   saved 04_disparity_sgbm_gray_raw.png")
 
     # Depth from disparity
     save_fig(

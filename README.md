@@ -146,10 +146,11 @@ python run_lab.py --full-res
 | `01_stereo_pair.png` | Original left/right |
 | `02_rectified.png` | Rectified pair + guides |
 | `03_disparity_bm.png` | StereoBM disparity (colour) |
-| `03_disparity_bm_gray.png` | StereoBM disparity (grey) |
+| `03_disparity_bm_gray.png` | Gray map: **brighter = closer**, darker = farther |
 | `04_disparity_sgbm.png` | StereoSGBM disparity (colour) |
-| `04_disparity_sgbm_gray.png` | StereoSGBM disparity (grey) |
-| `05_disparity_comparison.png` | BM vs SGBM |
+| `04_disparity_sgbm_gray.png` | Gray map: **brighter = closer**, darker = farther |
+| `05_disparity_comparison.png` | BM vs SGBM (colour) |
+| `05b_disparity_gray_comparison.png` | BM vs SGBM (gray, bright=close) |
 | `06_depth.png` | Depth from SGBM via `Z=(f*B)/d` |
 | `results.txt` | `f`, `B`, disparities, depth |
 
