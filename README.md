@@ -1,131 +1,117 @@
-# Computer Vision Lab 2 — Stereo Vision, Disparity, and Depth
+# Computer Vision Lab 2 — Simple Stereo | Camera Calibration
 
-Estimate depth from a left/right image pair using classical stereo vision only (**OpenCV**, **NumPy**, **Matplotlib**). No deep learning.
+Classical stereo only (**OpenCV**, **NumPy**, **Matplotlib**). One file: **`run_lab.py`**.
 
-All code is in **`run_lab.py`**.
+This lab follows the lecture slides on **Simple Stereo**, **Depth & Disparity**, **Stereo Matching**, **Window-Based Methods**, and **SAD / SSD / NCC**.
 
 ```text
-load → rectify → correspondence / disparity (StereoBM + StereoSGBM) → depth
+load → rectify (scan lines) → window matching (SAD/SSD/NCC) → disparity → (x,y,z)
 ```
 
 ---
 
-## 1. Pipeline overview
+## Lecture checklist (what we implemented)
 
-| Step | What happens | Formula / idea |
-|------|----------------|----------------|
-| Load | Read `left.jpg`, `right.jpg` | Same resolution required |
-| Rectify | Align rows (epipolar lines horizontal) | Correspondence becomes 1-D |
-| Disparity | Solve the **correspondence problem** | `d = u_l − u_r` |
-| Depth | Perspective stereo equation | `Z = (f × B) / d` |
-
----
-
-## 2. Formulas (full set used in this lab)
-
-### 2.1 Perspective projection (pinhole camera)
-
-A 3-D point `(x, y, z)` projects to the image as:
-
-```text
-u = fx * (x / z) + ox
-v = fy * (y / z) + oy
-```
-
-For a **stereo** pair with baseline `b` along x (right camera shifted by `b`):
-
-```text
-Left:   (u_l, v_l) = ( fx * (x / z)       + ox ,  fy * (y / z) + oy )
-Right:  (u_r, v_r) = ( fx * ((x - b) / z) + ox ,  fy * (y / z) + oy )
-```
-
-After rectification, `v_l = v_r` (same row). Only the horizontal coordinate differs.
-
-### 2.2 Disparity from perspective projection
-
-```text
-d = u_l - u_r
-  = fx*(x/z) - fx*((x - b)/z)
-  = fx * (b / z)
-```
-
-So:
-
-```text
-d = (fx * b) / z
-z = (fx * b) / d
-```
-
-In code we write this as:
-
-```text
-Z = (f * B) / d
-```
-
-with `f ≈ fx` (pixels) and `B = b` (metres).
-
-### 2.3 Correspondence problem
-
-**Problem:** given a pixel in the left image, find the matching pixel in the right image (same 3-D world point).
-
-**In this lab:** StereoBM and StereoSGBM solve correspondence densely along each row after rectification. The match shift is disparity `d`.
-
-ORB matching in `rectify()` also solves correspondence sparsely, only to estimate the vertical offset.
-
-### 2.4 Symbol table
-
-| Symbol | Meaning | In `run_lab.py` |
-|--------|---------|-----------------|
-| `(x,y,z)` | 3-D point in camera frame | recovered depth is `z` / `Z` |
-| `(u_l, v_l)` | left image pixel | left rectified image |
-| `(u_r, v_r)` | right image pixel | right rectified image |
-| `fx`, `fy` | focal length (pixels) | `FOCAL_PX` (as `f`) |
-| `ox`, `oy` | principal point | assumed near image centre |
-| `b` / `B` | baseline (metres) | `BASELINE_M` |
-| `d` | disparity (pixels) | StereoBM / StereoSGBM output |
-| `Z` | depth (metres) | `disparity_to_depth()` |
-
-### 2.5 Intuition
-
-```text
-Closer object  →  larger d  →  smaller Z
-Farther object →  smaller d →  larger Z
-```
+| Lecture topic | Done? | Where in this project |
+|---------------|-------|------------------------|
+| Stereo cameras + baseline `b` | Yes | `BASELINE_B`, rectified left/right |
+| Perspective projection `(u_l,v_l)`, `(u_r,v_r)` | Yes | Header formulas + README §2 |
+| `fx, fy, b, ox, oy` known | Yes | `FX`, `FY`, `BASELINE_B`, image centre |
+| Disparity `d = u_l − u_r` | Yes | StereoBM / SGBM / scan-line matcher |
+| Depth `z = (b · fx) / d` | Yes | `disparity_to_xyz()` |
+| Also solve `x`, `y` | Yes | Same function (lecture formulas) |
+| Correspondence / find disparities | Yes | Window matching along scan line |
+| Template `T` + search scan line `L` | Yes | `match_along_scanline`, demo figure |
+| SAD (minimise) | Yes | `sad()` + StereoBM (dense SAD) |
+| SSD (minimise) | Yes | `ssd()` on template demo |
+| NCC (maximise) | Yes | `ncc()` on template demo |
+| Small window (noisy) | Yes | `WINDOW_SMALL = 5` |
+| Large window (~30 px, smoother) | Yes | `WINDOW_LARGE = 31` |
+| Adaptive windows | Yes | `adaptive_window_disparity()` |
+| Disparity map closer=brighter | Yes | `disparity_gray_map()` |
+| Depth map from `z` | Yes | `06_depth.png` |
 
 ---
 
-## 3. Where each formula appears in code
+## 1. Perspective projection (slide)
 
-| Concept | Location in `run_lab.py` |
-|---------|---------------------------|
-| `f`, `B` | `FOCAL_PX`, `BASELINE_M` at top |
-| Correspondence / disparity | `compute_bm()`, `compute_sgbm()` |
-| `d = u_l - u_r` | OpenCV stereo matchers (internally) |
-| `Z = (f * B) / d` | `disparity_to_depth()` → `depth[valid] = (f * B) / disp[valid]` |
-| Sparse correspondence | `match_offsets()` / ORB inside `rectify()` |
+Left camera at origin, right camera at `(b, 0, 0)`:
 
----
+```text
+(u_l, v_l) = ( fx * (x / z) + ox ,  fy * (y / z) + oy )
+(u_r, v_r) = ( fx * ((x - b) / z) + ox ,  fy * (y / z) + oy )
+```
 
-## 4. What the code does (steps)
-
-### Load
-Reads left/right, checks shapes match, optional resize for speed.
-
-### Rectify
-Estimates median vertical offset from ORB matches, shifts the right image so matches share a row. Swaps left/right if disparity would be negative. Draws green horizontal guides.
-
-### Disparity (correspondence)
-- **StereoBM** — block matching  
-- **StereoSGBM** — semi-global matching (used for final depth)
-
-### Depth
-Applies perspective stereo formula `Z = (f * B) / d` on the SGBM disparity map. Skips invalid / zero `d`.
-
-`f` and `B` are **experimental placeholders** (`700` px, `0.08` m). Depths illustrate the equation; they are not ground-truth metres without real calibration.
+After **rectification**, `v_l = v_r` — matching is only along the **same horizontal scan line**.
 
 ---
 
-## 5. Run
+## 2. Depth and disparity (slide)
+
+```text
+d = u_l - u_r                              # disparity
+z = (b * fx) / d                           # depth (lecture highlight)
+x = b * (u_l - ox) / d
+y = b * fx * (v_l - oy) / (fy * d)
+```
+
+- Depth `z` is **inversely proportional** to disparity  
+- Disparity is **proportional** to baseline `b`
+
+In code: `disparity_to_xyz()` in `run_lab.py`.
+
+---
+
+## 3. Stereo matching / disparity map (slide)
+
+**Goal:** find disparity between left and right pairs.
+
+Gray encoding (like the ground-truth slide):
+
+- **Brighter** → larger `d` → **closer**
+- **Darker** → smaller `d` → **farther**
+
+Your phone photos will not look as clean as the Tsukuba lab ground-truth map (that needs a calibrated stereo rig). We still use the same encoding and pipeline.
+
+---
+
+## 4. Window-based methods (slide)
+
+1. Take a **template window `T`** around a pixel in the left image `E_l`  
+2. Search along the **scan line `L`** in the right image `E_r` (same row)  
+3. Choose the shift (disparity) with the best similarity score  
+
+Dense version: **StereoBM** does this for every pixel using **SAD**.
+
+Demo figure: `02b_window_scanline_demo.png` (red = `T`, white = `L`, green = match).
+
+---
+
+## 5. Similarity metrics (slide)
+
+```text
+SAD(k,l) = Σ |E_l(i,j) − E_r(i+k, j+l)|          # minimise
+SSD(k,l) = Σ |E_l(i,j) − E_r(i+k, j+l)|^2         # minimise
+NCC(k,l) = Σ E_l E_r / sqrt(Σ E_l² Σ E_r²)        # maximise
+```
+
+Implemented as `sad()`, `ssd()`, `ncc()` and printed for a centre template in `results.txt`.
+
+---
+
+## 6. How large should the window be? (slide)
+
+| Window | Effect | In code |
+|--------|--------|---------|
+| Small (5 px) | Sensitive to noise | `WINDOW_SMALL = 5` |
+| Large (~30 px) | Less noise, poorer edge localization | `WINDOW_LARGE = 31` |
+| **Adaptive** | Try several sizes; fuse robustly | `WINDOW_ADAPTIVE = (5, 15, 31)` |
+
+Comparison figure: `03_window_small_vs_large.png`.
+
+---
+
+## 7. Run
 
 ```powershell
 & "$env:LocalAppData\Programs\Python\Python311\python.exe" -m pip install -r requirements.txt
@@ -139,46 +125,25 @@ python run_lab.py --full-res
 
 ---
 
-## 6. Outputs (`outputs/`)
+## 8. Outputs
 
-| File | Content |
-|------|---------|
-| `01_stereo_pair.png` | Original left/right |
-| `02_rectified.png` | Rectified pair + guides |
-| `03_disparity_bm.png` | StereoBM disparity (colour) |
-| `03_disparity_bm_gray.png` | Gray map: **brighter = closer**, darker = farther |
-| `04_disparity_sgbm.png` | StereoSGBM disparity (colour) |
-| `04_disparity_sgbm_gray.png` | Gray map: **brighter = closer**, darker = farther |
-| `05_disparity_comparison.png` | BM vs SGBM (colour) |
-| `05b_disparity_gray_comparison.png` | BM vs SGBM (gray, bright=close) |
-| `06_depth.png` | Depth from SGBM via `Z=(f*B)/d` |
-| `results.txt` | `f`, `B`, disparities, depth |
-
----
-
-## 7. Project layout
-
-```text
-left.jpg / right.jpg
-run_lab.py
-requirements.txt
-README.md
-outputs/          # created on run (gitignored)
-```
+| File | Lecture meaning |
+|------|-----------------|
+| `01_stereo_pair.png` | Left/right camera images |
+| `02_rectified_scanlines.png` | Same-row epipolar / scan lines |
+| `02b_window_scanline_demo.png` | Template `T` + search line `L` |
+| `03_window_small_vs_large.png` | Window 5 vs 31 comparison |
+| `04_disparity_adaptive_gray.png` | Disparity map (bright=close) |
+| `04b_disparity_sgbm_gray.png` | SGBM disparity (bright=close) |
+| `05_disparity_color.png` | Colour disparity |
+| `06_depth.png` | Depth `z = (b·fx)/d` |
+| `results.txt` | All formulas + SAD/SSD/NCC demo + numbers |
 
 ---
 
-## 8. Quick formula card
+## 9. Honest note on “ground truth” maps
 
-```text
-Perspective (stereo):
-  u_l = fx * (x / z) + ox
-  u_r = fx * ((x - b) / z) + ox
+The clean lamp/bust disparity slide is **lab ground truth** (calibrated stereo, controlled scene).  
+Our inputs are hand-held phone photos with **approximate** `fx` and `b` (no chessboard).  
 
-Disparity:
-  d = u_l - u_r = (fx * b) / z
-
-Depth:
-  z = (fx * b) / d
-  Z = (f * B) / d          ← used in code
-```
+We implement the **same maths and window-matching ideas**. The map will be noisier than Tsukuba GT until you add real chessboard calibration.
