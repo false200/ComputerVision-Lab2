@@ -32,6 +32,30 @@ Z = (f · B) / d
 
 ---
 
+## Stereo triangulation (geometry)
+
+![Stereo triangulation: cameras, baseline B, focal length f, disparity d = X_L − X_R, depth Z](docs/stereo_triangulation.png)
+
+How the diagram maps to **our** values:
+
+| Symbol in diagram | Meaning | Value used in this lab |
+|-------------------|---------|------------------------|
+| Baseline | Distance between left & right camera centres | **B = 12 cm** (6 cm left + 6 cm right of centre) |
+| `f` | Focal length in **pixels** | **f ≈ 834 px** via `(25 × W) / 36`, `W = 1201` |
+| `X_L`, `X_R` | Horizontal image positions of the same 3-D point | Measured after rectification / matching |
+| Disparity `d` | `d = X_L − X_R` (horizontal pixel shift) | From **StereoSGBM** (`disparity_map.npy`) |
+| `Z` | Depth from the cameras to the point | **Z = (f · B) / d** → e.g. bottle ≈ **85.5 cm** |
+
+```text
+Z = (f · B) / (X_L − X_R) = (f · B) / d
+
+Example (median bottle region):
+  f ≈ 834 px,  B = 12 cm,  d ≈ 115 px
+  Z ≈ (834 × 12) / 115 ≈ 87 cm   (measured median ≈ 85.5 cm)
+```
+
+---
+
 ## Pipeline
 
 ```text
