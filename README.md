@@ -54,6 +54,25 @@ Example (median bottle region):
   Z ≈ (834 × 12) / 115 ≈ 87 cm   (measured median ≈ 85.5 cm)
 ```
 
+### Projection & disparity equations
+
+![Stereo projection and disparity equations: Z/f = X/x_L, Z/f = (X−b)/x_R, x_L = (X/Z)·f, x_R = ((X−b)/Z)·f, Disparity = x_L − x_R](docs/stereo_equations.png)
+
+| Equation | Meaning | Our lab values |
+|----------|---------|----------------|
+| `Z / f = X / x_L` | Similar triangles (left camera) | `f ≈ 834 px` |
+| `Z / f = (X − b) / x_R` | Similar triangles (right camera) | `b = B = 12 cm` |
+| `x_L = (X / Z) · f` | Left image coordinate of the 3-D point | From left view |
+| `x_R = ((X − b) / Z) · f` | Right image coordinate | From right view |
+| `Disparity = x_L − x_R` | Horizontal pixel shift `d` | StereoSGBM output |
+
+Eliminating `X` from the two projection equations gives the depth we use in code:
+
+```text
+d = x_L − x_R
+Z = (f · b) / d = (f · B) / d
+```
+
 ---
 
 ## Pipeline
