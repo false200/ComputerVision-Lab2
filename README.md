@@ -1,126 +1,153 @@
-# Computer Vision Lab 2 — Simple Stereo | Camera Calibration
+# Computer Vision Lab 2 — Stereo Vision & Depth Estimation
 
-Classical stereo only (**OpenCV**, **NumPy**, **Matplotlib**). One file: **`run_lab.py`**.
+Classical stereo pipeline in one file: **`run_lab.py`**  
+Stack: **OpenCV · NumPy · Matplotlib** (no deep learning)
 
-This lab follows the lecture slides on **Simple Stereo**, **Depth & Disparity**, **Stereo Matching**, **Window-Based Methods**, and **SAD / SSD / NCC**.
+Left and right photos were captured with a **POCO X6 Pro 5G** main (wide) camera by shifting the phone sideways around a fixed centre.
+
+---
+
+## Capture setup (phone calibration)
+
+| Parameter | Value | Notes |
+|-----------|-------|--------|
+| Device | POCO X6 Pro 5G | Main / wide lens |
+| 35 mm equivalent focal length | **25 mm** | Manufacturer / EXIF class value |
+| Physical move | 6 cm left + 6 cm right of centre | Handheld horizontal baseline |
+| Baseline `B` | **12 cm** | Total optical-centre separation |
+| Pixel focal length | `f = (25 × W) / 36` | `W` = image width in pixels |
+
+For the checked-in pair (`1201 × 1600`):
 
 ```text
-load → rectify (scan lines) → window matching (SAD/SSD/NCC) → disparity → (x,y,z)
+f ≈ (25 × 1201) / 36 ≈ 834 px
+B = 12 cm
+```
+
+Depth is reported in **centimetres** so it matches `B` in cm:
+
+```text
+Z = (f · B) / d
 ```
 
 ---
 
-## 1. Perspective projection (slide)
-
-Left camera at origin, right camera at `(b, 0, 0)`:
+## Pipeline
 
 ```text
-(u_l, v_l) = ( fx * (x / z) + ox ,  fy * (y / z) + oy )
-(u_r, v_r) = ( fx * ((x - b) / z) + ox ,  fy * (y / z) + oy )
+Input: left.jpg + right.jpg
+   │
+   ▼
+SIFT  — detect keypoints & descriptors on both images
+   │
+   ▼
+Brute-Force matching (L2)  — pair left↔right descriptors
+   │
+   ▼
+RANSAC Homography  — reject bad matches; warp right onto left rows
+   │
+   ▼
+StereoSGBM  — dense disparity map d (horizontal pixel shift)
+   │
+   ▼
+Triangulation  Z = (f · B) / d
+   │
+   ▼
+Outputs: disparity / depth images + .npy arrays + bottle distance
 ```
-
-After **rectification**, `v_l = v_r` — matching is only along the **same horizontal scan line**.
 
 ---
 
-## 2. Depth and disparity (slide)
+## Algorithms (what each step does)
+
+### 1. SIFT (Scale-Invariant Feature Transform)
+Finds distinctive points (corners, textured spots) that survive small tilt, scale, and lighting changes from handheld capture.
+
+### 2. Brute-Force matching
+Compares every left SIFT descriptor to every right descriptor (L2 distance) and keeps the best pairs.  
+**Use:** builds the left↔right correspondences that Homography needs. It is *not* the dense depth matcher.
+
+### 3. RANSAC Homography
+Fits a warp `H` that maps the right image onto the left image plane, while discarding geometric outliers.  
+**Use:** corrects small handheld tilt/height error so stereo search can run along horizontal rows.
+
+### 4. StereoSGBM (Semi-Global Block Matching)
+For each pixel in the left image, slides a window along the same row in the right image and finds the best match. Output is the **disparity map** `d` (pixels).
+
+### 5. Triangulation
+Converts disparity into metric depth with the phone baseline and focal length:
 
 ```text
-d = u_l - u_r                              # disparity
-z = (b * fx) / d                           # depth (lecture highlight)
-x = b * (u_l - ox) / d
-y = b * fx * (v_l - oy) / (fy * d)
+d = u_left − u_right          # disparity (px)
+Z = (f · B) / d               # depth (cm)
 ```
 
-- Depth `z` is **inversely proportional** to disparity  
-- Disparity is **proportional** to baseline `b`
-
-In code: `disparity_to_xyz()` in `run_lab.py`.
+Closer objects → larger `d` → smaller `Z`.
 
 ---
 
-## 3. Stereo matching / disparity map (slide)
-
-**Goal:** find disparity between left and right pairs.
-
-Gray encoding (like the ground-truth slide):
-
-- **Brighter** → larger `d` → **closer**
-- **Darker** → smaller `d` → **farther**
-
-Your phone photos will not look as clean as the Tsukuba lab ground-truth map (that needs a calibrated stereo rig). We still use the same encoding and pipeline.
-
----
-
-## 4. Window-based methods (slide)
-
-1. Take a **template window `T`** around a pixel in the left image `E_l`  
-2. Search along the **scan line `L`** in the right image `E_r` (same row)  
-3. Choose the shift (disparity) with the best similarity score  
-
-Dense version: **StereoBM** does this for every pixel using **SAD**.
-
-Demo figure: `02b_window_scanline_demo.png` (red = `T`, white = `L`, green = match).
-
----
-
-## 5. Similarity metrics (slide)
-
-```text
-SAD(k,l) = Σ |E_l(i,j) − E_r(i+k, j+l)|          # minimise
-SSD(k,l) = Σ |E_l(i,j) − E_r(i+k, j+l)|^2         # minimise
-NCC(k,l) = Σ E_l E_r / sqrt(Σ E_l² Σ E_r²)        # maximise
-```
-
-Implemented as `sad()`, `ssd()`, `ncc()` and printed for a centre template in `results.txt`.
-
----
-
-## 6. How large should the window be? (slide)
-
-| Window | Effect | In code |
-|--------|--------|---------|
-| Small (5 px) | Sensitive to noise | `WINDOW_SMALL = 5` |
-| Large (~30 px) | Less noise, poorer edge localization | `WINDOW_LARGE = 31` |
-| **Adaptive** | Try several sizes; fuse robustly | `WINDOW_ADAPTIVE = (5, 15, 31)` |
-
-Comparison figure: `03_window_small_vs_large.png`.
-
----
-
-## 7. Run
+## How to run
 
 ```powershell
 & "$env:LocalAppData\Programs\Python\Python311\python.exe" -m pip install -r requirements.txt
 & "$env:LocalAppData\Programs\Python\Python311\python.exe" run_lab.py
 ```
 
+Optional flags:
+
 ```bash
-python run_lab.py --show
-python run_lab.py --full-res
+python run_lab.py --show                 # open figure windows
+python run_lab.py --baseline-cm 12       # default B
+python run_lab.py --max-edge 800         # faster downscaled preview
+```
+
+Place your stereo pair as `left.jpg` and `right.jpg` in the repo root (or pass `--left` / `--right`).
+
+---
+
+## Outputs (`outputs/`)
+
+| File | Description |
+|------|-------------|
+| `01_stereo_pair.png` | Input left / right |
+| `01b_sift_ransac_matches.png` | SIFT + RANSAC inlier matches |
+| `02_rectified_scanlines.png` | Left + Homography-aligned right |
+| `03_target_roi.png` | Bottle ROI with measured distance |
+| `04_disparity_gray.png` | Disparity (brighter = larger `d` = closer) |
+| `05_disparity_color.png` | Colour disparity |
+| `06_depth.png` / `output_depth_map.png` | Depth colormap (warm = near) |
+| `output_disparity.png` | Raw disparity preview |
+| `output_rectified_right.png` | Aligned right image |
+| `disparity_map.npy` | Disparity array (px) |
+| `depth_map_cm.npy` | Depth array (cm) |
+| `results.txt` | Calibration numbers + bottle distance |
+
+Example result from the current pair (see `results.txt`):
+
+```text
+f_pixel ≈ 834 px
+B = 12 cm
+RANSAC inliers ≈ 76 / 100
+Measured bottle distance ≈ 85.5 cm
 ```
 
 ---
 
-## 8. Outputs
+## Project layout
 
-| File | Lecture meaning |
-|------|-----------------|
-| `01_stereo_pair.png` | Left/right camera images |
-| `02_rectified_scanlines.png` | Same-row epipolar / scan lines |
-| `02b_window_scanline_demo.png` | Template `T` + search line `L` |
-| `03_window_small_vs_large.png` | Window 5 vs 31 comparison |
-| `04_disparity_adaptive_gray.png` | Disparity map (bright=close) |
-| `04b_disparity_sgbm_gray.png` | SGBM disparity (bright=close) |
-| `05_disparity_color.png` | Colour disparity |
-| `06_depth.png` | Depth `z = (b·fx)/d` |
-| `results.txt` | All formulas + SAD/SSD/NCC demo + numbers |
+```text
+ComputerVision-Lab2/
+├── left.jpg / right.jpg     # stereo pair
+├── run_lab.py               # full pipeline
+├── requirements.txt
+├── README.md
+└── outputs/                 # generated (gitignored visuals/arrays)
+```
 
 ---
 
-## 9. Honest note on “ground truth” maps
+## Limitations
 
-The clean lamp/bust disparity slide is **lab ground truth** (calibrated stereo, controlled scene).  
-Our inputs are hand-held phone photos with **approximate** `fx` and `b` (no chessboard).  
-
-We implement the **same maths and window-matching ideas**. The map will be noisier than Tsukuba GT until you add real chessboard calibration.
+- Handheld shift is not a perfect parallel stereo rig; Homography helps but residual error remains.
+- Textureless walls / floors often have missing or noisy disparity.
+- Absolute centimetre accuracy improves further with chessboard `stereoCalibrate`; this lab uses the phone parameters above (`B = 12 cm`, `f = 25·W/36`).
